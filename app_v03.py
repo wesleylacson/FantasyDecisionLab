@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Fantasy Decision Lab v0.3 — rankings-endpoint backend.
-
-Uses FantasyPros consensus-rankings with small accuracy-sorted expert groups.
-This removes the app's dependency on the flaky compare-players endpoint while
-preserving the Full / Weighted / Elite 15 / Elite 10 / Elite 5 lenses.
-"""
+"""Fantasy Decision Lab v0.3.1 — rankings-endpoint backend with lazy startup."""
 from __future__ import annotations
 
 import json
@@ -23,7 +18,7 @@ import requests
 import app as legacy
 import app_v02 as ui
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 YEAR = legacy.YEAR
 WEEK = legacy.WEEK
 POSITIONS = legacy.POSITIONS
@@ -104,7 +99,15 @@ def load_expert_names(force=False):
     return out
 
 
+def ensure_accuracy_loaded():
+    if STATE["current_accuracy"] is None:
+        STATE["current_accuracy"] = legacy.read_accuracy(2026)
+    if STATE["prior_accuracy"] is None:
+        STATE["prior_accuracy"] = legacy.read_accuracy(2025)
+
+
 def build_position_model(position: str, force_experts=False):
+    ensure_accuracy_loaded()
     directory, active_ids = legacy.load_position_directory(position)
     if force_experts or not STATE["expert_names"]:
         STATE["expert_names"] = load_expert_names(force=force_experts)
@@ -197,10 +200,8 @@ def rank_value(row, *keys):
     for key in keys:
         v = row.get(key)
         if v is not None:
-            try:
-                return float(v)
-            except Exception:
-                pass
+            try: return float(v)
+            except Exception: pass
     return None
 
 
@@ -220,10 +221,7 @@ def group_pair_stats(data, aid, bid, requested_ids, weights):
     bsd = rank_value(brow, "rank_std", "std_dev", "rank_stdev") or 0.0
     gap_signed = bavg - aavg
     sigma = math.sqrt(asd * asd + bsd * bsd)
-    if sigma < 1e-9:
-        ashare = 1.0 if gap_signed > 0 else 0.0 if gap_signed < 0 else 0.5
-    else:
-        ashare = norm_cdf(gap_signed / sigma)
+    ashare = (1.0 if gap_signed > 0 else 0.0 if gap_signed < 0 else 0.5) if sigma < 1e-9 else norm_cdf(gap_signed / sigma)
     included = requested_ids[:n]
     mean_weight = sum(weights.get(e, 1.0) for e in included) / len(included) if included else 1.0
     return {"n": n, "a_avg": aavg, "b_avg": bavg, "a_std": asd, "b_std": bsd, "a_share": ashare, "mean_weight": mean_weight}
@@ -238,194 +236,119 @@ def combine_groups(name, groups, weighted=False):
     aavg = sum(g["a_avg"] * m for g, m in zip(groups, mass)) / den
     bavg = sum(g["b_avg"] * m for g, m in zip(groups, mass)) / den
     ashare = sum(g["a_share"] * m for g, m in zip(groups, mass)) / den
-    return {
-        "name": name, "available": True, "experts": sum(g["n"] for g in groups), "weighted": weighted,
-        "a_avg_rank": aavg, "b_avg_rank": bavg, "a_vote_share": ashare, "b_vote_share": 1 - ashare,
-        "winner": "A" if aavg <= bavg else "B", "rank_gap": abs(aavg - bavg),
-    }
+    return {"name": name, "available": True, "experts": sum(g["n"] for g in groups), "weighted": weighted,
+            "a_avg_rank": aavg, "b_avg_rank": bavg, "a_vote_share": ashare, "b_vote_share": 1-ashare,
+            "winner": "A" if aavg <= bavg else "B", "rank_gap": abs(aavg-bavg)}
 
 
 def compare(position, scoring, a_name, b_name, force=False):
-    if position not in POSITIONS:
-        raise ValueError("Choose QB, RB, WR, or TE.")
+    if position not in POSITIONS: raise ValueError("Choose QB, RB, WR, or TE.")
     scoring = norm_scoring(scoring)
     model = get_model(position)
     a, b = resolve(a_name, position), resolve(b_name, position)
     aid, bid = str(a["player_id"]), str(b["player_id"])
     ids, weights = model["active_ids"], model["weights"]
-    chunks = [ids[i:i + GROUP_SIZE] for i in range(0, len(ids), GROUP_SIZE)]
+    chunks = [ids[i:i+GROUP_SIZE] for i in range(0, len(ids), GROUP_SIZE)]
     stats, newest = [], None
     for chunk in chunks:
         data = fetch_group(position, scoring, chunk, force=force)
         stats.append(group_pair_stats(data, aid, bid, chunk, weights))
         path = group_path(position, scoring, chunk)
-        if path.exists():
-            newest = max(newest or 0, path.stat().st_mtime)
+        if path.exists(): newest = max(newest or 0, path.stat().st_mtime)
     usable = [g for g in stats if g]
-    if not usable:
-        raise RuntimeError("FantasyPros rankings returned no usable ranks for one or both selected players.")
-
+    if not usable: raise RuntimeError("FantasyPros rankings returned no usable ranks for one or both selected players.")
     full = combine_groups("Full consensus", usable, False)
     weighted = combine_groups("Weighted full", usable, True)
-    elite15 = combine_groups("Elite 15", usable[:3], False)
-    elite10 = combine_groups("Elite 10", usable[:2], False)
-    elite5 = combine_groups("Elite 5", usable[:1], False)
-    panels = [full, weighted, elite15, elite10, elite5]
-
+    panels = [full, weighted, combine_groups("Elite 15", usable[:3], False), combine_groups("Elite 10", usable[:2], False), combine_groups("Elite 5", usable[:1], False)]
     aavg, bavg = weighted["a_avg_rank"], weighted["b_avg_rank"]
     winner = a if aavg <= bavg else b
     winner_share = weighted["a_vote_share"] if aavg <= bavg else weighted["b_vote_share"]
-    gap = abs(aavg - bavg)
-    mden = sum(g["n"] * g["mean_weight"] for g in usable)
-    margin_var = sum((g["a_std"] ** 2 + g["b_std"] ** 2) * g["n"] * g["mean_weight"] for g in usable) / mden
+    gap = abs(aavg-bavg)
+    mden = sum(g["n"]*g["mean_weight"] for g in usable)
+    margin_var = sum((g["a_std"]**2+g["b_std"]**2)*g["n"]*g["mean_weight"] for g in usable)/mden
     margin_std = math.sqrt(max(0.0, margin_var))
     cp = legacy.confidence_components(winner_share, gap, margin_std)
-
-    if cp["final"] == "TOSS-UP":
-        why = "The grouped expert rankings do not show enough directional or rank separation to call this more than a coin flip."
-    elif cp["final"] == "LEAN":
-        why = "There is a small rankings edge, but matchup or projection context can reasonably overturn it."
-    elif cp["final"] == "MODERATE":
-        why = "The accuracy-grouped expert pool shows a meaningful preference. A contrary start needs a substantive football reason."
-    else:
-        why = "The accuracy-grouped expert pool is strongly aligned. This should usually control absent major contextual news."
-
-    return {
-        "position": position, "scoring": "STD" if position == "QB" else scoring,
-        "player_a": a["player"], "team_a": a["team"], "player_b": b["player"], "team_b": b["team"],
-        "recommendation": winner["player"], "confidence": cp["final"], "experts_used": weighted["experts"],
-        "a_weighted_avg_rank": aavg, "b_weighted_avg_rank": bavg,
-        "a_unweighted_avg_rank": full["a_avg_rank"], "b_unweighted_avg_rank": full["b_avg_rank"],
-        "a_weighted_vote_share": weighted["a_vote_share"], "b_weighted_vote_share": weighted["b_vote_share"],
-        "a_unweighted_vote_share": full["a_vote_share"], "b_unweighted_vote_share": full["b_vote_share"],
-        "weighted_rank_gap": gap, "weighted_std_expert_margin": margin_std,
-        "directional_signal": cp["direction"], "magnitude_signal": cp["magnitude"], "agreement_signal": cp["agreement"],
-        "margin_stability_ratio": cp["stability_ratio"], "evidence_score": cp["evidence_score"], "panels": panels,
-        "elite_experts": model["details"][:15], "why": why,
-        "last_refreshed": datetime.fromtimestamp(newest, tz=timezone.utc).astimezone().isoformat(timespec="seconds") if newest else None,
-        "source_note": (
-            f"{position} rankings now come from FantasyPros weekly consensus-rankings, not compare-players. "
-            f"Experts are sorted by the same 50/25/20/5 accuracy model and fetched in groups of {GROUP_SIZE}. "
-            "Elite 5/10/15 average those top groups directly; Weighted full combines all groups using their mean accuracy weight. "
-            "Directional vote share is estimated from each group's rank gap and rank dispersion, so confidence is comparable but not mathematically identical to the old per-expert-ballot backend."
-        ),
-    }
+    if cp["final"] == "TOSS-UP": why = "The grouped expert rankings do not show enough directional or rank separation to call this more than a coin flip."
+    elif cp["final"] == "LEAN": why = "There is a small rankings edge, but matchup or projection context can reasonably overturn it."
+    elif cp["final"] == "MODERATE": why = "The accuracy-grouped expert pool shows a meaningful preference. A contrary start needs a substantive football reason."
+    else: why = "The accuracy-grouped expert pool is strongly aligned. This should usually control absent major contextual news."
+    return {"position":position,"scoring":"STD" if position=="QB" else scoring,"player_a":a["player"],"team_a":a["team"],"player_b":b["player"],"team_b":b["team"],
+            "recommendation":winner["player"],"confidence":cp["final"],"experts_used":weighted["experts"],"a_weighted_avg_rank":aavg,"b_weighted_avg_rank":bavg,
+            "a_unweighted_avg_rank":full["a_avg_rank"],"b_unweighted_avg_rank":full["b_avg_rank"],"a_weighted_vote_share":weighted["a_vote_share"],"b_weighted_vote_share":weighted["b_vote_share"],
+            "a_unweighted_vote_share":full["a_vote_share"],"b_unweighted_vote_share":full["b_vote_share"],"weighted_rank_gap":gap,"weighted_std_expert_margin":margin_std,
+            "directional_signal":cp["direction"],"magnitude_signal":cp["magnitude"],"agreement_signal":cp["agreement"],"margin_stability_ratio":cp["stability_ratio"],"evidence_score":cp["evidence_score"],
+            "panels":panels,"elite_experts":model["details"][:15],"why":why,"last_refreshed":datetime.fromtimestamp(newest,tz=timezone.utc).astimezone().isoformat(timespec="seconds") if newest else None,
+            "source_note":f"{position} rankings come from FantasyPros weekly consensus-rankings. Experts are accuracy-sorted in groups of {GROUP_SIZE}; directional vote share is estimated from group rank gap and dispersion."}
 
 
 def players_payload(position, scoring):
-    model = get_model(position)
-    directory = model["directory"]
-    players = []
-    for _, r in directory.sort_values("directory_rank", na_position="last").iterrows():
-        players.append({"player": r["player"], "team": r["team"], "player_id": str(r["player_id"]), "cached": False})
-    ids = model["active_ids"]
-    first = ids[:GROUP_SIZE]
-    cached = bool(first and group_path(position, scoring, first).exists())
+    model = get_model(position); directory = model["directory"]; players=[]
+    for _,r in directory.sort_values("directory_rank",na_position="last").iterrows():
+        players.append({"player":r["player"],"team":r["team"],"player_id":str(r["player_id"]),"cached":False})
+    ids=model["active_ids"]; first=ids[:GROUP_SIZE]; cached=bool(first and group_path(position,scoring,first).exists())
     if cached:
-        for p in players:
-            p["cached"] = True
-    return {"position": position, "scoring": scoring, "players": players, "cached_count": len(players) if cached else 0, "total_count": len(players)}
+        for p in players: p["cached"]=True
+    return {"position":position,"scoring":scoring,"players":players,"cached_count":len(players) if cached else 0,"total_count":len(players)}
 
 
-def clear_position_cache(position, scoring=None):
-    base = BACKEND_CACHE / str(YEAR) / f"week_{WEEK}"
+def clear_position_cache(position,scoring=None):
+    base=BACKEND_CACHE/str(YEAR)/f"week_{WEEK}"
     if scoring:
-        target = base / scoring / position
-        if target.exists():
-            shutil.rmtree(target)
+        target=base/scoring/position
+        if target.exists(): shutil.rmtree(target)
     else:
-        for s in ("PPR", "STD"):
-            target = base / s / position
-            if target.exists():
-                shutil.rmtree(target)
+        for s in ("PPR","STD"):
+            target=base/s/position
+            if target.exists(): shutil.rmtree(target)
 
 
 def initialize():
-    STATE["current_accuracy"] = legacy.read_accuracy(2026)
-    STATE["prior_accuracy"] = legacy.read_accuracy(2025)
-    STATE["expert_names"] = load_expert_names(False)
-    for p in POSITIONS:
-        build_position_model(p)
+    # Deliberately local-only. Network-backed FantasyPros data is loaded lazily
+    # when Start/Sit is first used, so the splash page always launches quickly.
+    ensure_accuracy_loaded()
 
 
 class Handler(legacy.Handler):
-    def send_html(self, h):
-        data = h.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
+    def send_html(self,h):
+        data=h.encode("utf-8"); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_POST(self):
-        parsed = urlparse(self.path)
-        if parsed.path != "/api/refresh":
-            return super().do_POST()
+        parsed=urlparse(self.path)
+        if parsed.path!="/api/refresh": return super().do_POST()
         try:
-            n = int(self.headers.get("Content-Length", "0"))
-            body = json.loads(self.rfile.read(n).decode() or "{}")
-            scope = str(body.get("scope") or "").lower()
-            position = str(body.get("position") or "WR").upper()
-            scoring = norm_scoring(body.get("scoring"))
+            n=int(self.headers.get("Content-Length","0")); body=json.loads(self.rfile.read(n).decode() or "{}"); scope=str(body.get("scope") or "").lower(); position=str(body.get("position") or "WR").upper(); scoring=norm_scoring(body.get("scoring"))
             with LOCK:
-                if scope == "matchup":
-                    result = compare(position, scoring, str(body.get("a") or ""), str(body.get("b") or ""), force=True)
-                    result = {"scope": scope, "position": position, "scoring": scoring, "refreshed_at": result.get("last_refreshed")}
-                elif scope == "position":
-                    clear_position_cache(position, scoring)
-                    build_position_model(position)
-                    result = {"scope": scope, "position": position, "scoring": scoring, "refreshed_at": datetime.now().astimezone().isoformat(timespec="seconds")}
-                elif scope == "all":
-                    root = BACKEND_CACHE / str(YEAR) / f"week_{WEEK}"
-                    if root.exists():
-                        shutil.rmtree(root)
-                    STATE["expert_names"] = load_expert_names(True)
-                    for p in POSITIONS:
-                        build_position_model(p)
-                    result = {"scope": scope, "refreshed_at": datetime.now().astimezone().isoformat(timespec="seconds")}
-                else:
-                    raise ValueError("Refresh scope must be matchup, position, or all.")
+                if scope=="matchup":
+                    result=compare(position,scoring,str(body.get("a") or ""),str(body.get("b") or ""),force=True); result={"scope":scope,"position":position,"scoring":scoring,"refreshed_at":result.get("last_refreshed")}
+                elif scope=="position":
+                    clear_position_cache(position,scoring); STATE["position_models"].pop(position,None); result={"scope":scope,"position":position,"scoring":scoring,"refreshed_at":datetime.now().astimezone().isoformat(timespec="seconds")}
+                elif scope=="all":
+                    root=BACKEND_CACHE/str(YEAR)/f"week_{WEEK}"; shutil.rmtree(root) if root.exists() else None; STATE["expert_names"]={}; STATE["position_models"]={}; result={"scope":scope,"refreshed_at":datetime.now().astimezone().isoformat(timespec="seconds")}
+                else: raise ValueError("Refresh scope must be matchup, position, or all.")
             self.send_json(result)
-        except Exception as e:
-            self.send_json({"error": str(e)}, status=400)
-
+        except Exception as e: self.send_json({"error":str(e)},status=400)
     def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path == "/":
-            self.send_html(ui.HOME_HTML.replace("v0.2 ·", "v0.3 ·")); return
-        if parsed.path == "/start-sit":
-            self.send_html(ui.start_sit_html()); return
-        if parsed.path in {"/api/players", "/api/compare"}:
-            q = parse_qs(parsed.query)
-            position = ((q.get("position") or ["WR"])[0]).upper()
-            scoring = norm_scoring((q.get("scoring") or ["PPR"])[0])
+        parsed=urlparse(self.path)
+        if parsed.path=="/": self.send_html(ui.HOME_HTML.replace("v0.2 ·","v0.3.1 ·")); return
+        if parsed.path=="/start-sit": self.send_html(ui.start_sit_html()); return
+        if parsed.path in {"/api/players","/api/compare"}:
+            q=parse_qs(parsed.query); position=((q.get("position") or ["WR"])[0]).upper(); scoring=norm_scoring((q.get("scoring") or ["PPR"])[0])
             try:
                 with LOCK:
-                    if parsed.path == "/api/players":
-                        self.send_json(players_payload(position, scoring))
-                    else:
-                        self.send_json(compare(position, scoring, (q.get("a") or [""])[0], (q.get("b") or [""])[0]))
-            except Exception as e:
-                self.send_json({"error": str(e)}, status=400)
+                    if parsed.path=="/api/players": self.send_json(players_payload(position,scoring))
+                    else: self.send_json(compare(position,scoring,(q.get("a") or [""])[0],(q.get("b") or [""])[0]))
+            except Exception as e: self.send_json({"error":str(e)},status=400)
             return
         super().do_GET()
 
 
 def main():
-    print(f"Loading Fantasy Decision Lab v{APP_VERSION}…")
+    print(f"Loading Fantasy Decision Lab v{APP_VERSION}…",flush=True)
     initialize()
-    for p in POSITIONS:
-        print(f"{p}: {len(get_model(p)['active_ids'])} active accuracy-matched experts.")
-    print(f"Fantasy Decision Lab: http://{HOST}:{PORT}")
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    threading.Timer(0.8, lambda: webbrowser.open(f"http://{HOST}:{PORT}")).start()
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopped.")
-    finally:
-        server.server_close()
+    print(f"Fantasy Decision Lab: http://{HOST}:{PORT}",flush=True)
+    server=ThreadingHTTPServer((HOST,PORT),Handler)
+    threading.Timer(.8,lambda:webbrowser.open(f"http://{HOST}:{PORT}")).start()
+    try: server.serve_forever()
+    except KeyboardInterrupt: print("\nStopped.")
+    finally: server.server_close()
 
-
-if __name__ == "__main__":
-    main()
+if __name__=="__main__": main()
