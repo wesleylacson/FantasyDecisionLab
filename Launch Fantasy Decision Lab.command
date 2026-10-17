@@ -15,7 +15,12 @@ if [ ! -x "$DIR/.venv/bin/python" ] || [ ! -f "$HOME/.fantasy_decision_lab/confi
   exit 0
 fi
 
-nohup "$DIR/.venv/bin/python" "$DIR/app.py" > "$DIR/fantasy_decision_lab.log" 2>&1 &
+APP_ENTRY="$DIR/app_v02.py"
+if [ ! -f "$APP_ENTRY" ]; then
+  APP_ENTRY="$DIR/app.py"
+fi
+
+nohup "$DIR/.venv/bin/python" "$APP_ENTRY" > "$DIR/fantasy_decision_lab.log" 2>&1 &
 echo $! > "$DIR/fantasy_decision_lab.pid"
 
 for i in {1..30}; do
