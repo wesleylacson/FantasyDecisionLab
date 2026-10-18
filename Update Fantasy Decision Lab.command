@@ -26,6 +26,18 @@ if [ -x "$DIR/.venv/bin/pip" ]; then
   "$DIR/.venv/bin/pip" install -r requirements.txt >/dev/null
 fi
 
+# If an older app process is still running, stop it now so the next Launch
+# actually starts the newly-updated entrypoint instead of reopening the old server.
+PIDFILE="$DIR/fantasy_decision_lab.pid"
+if [ -f "$PIDFILE" ]; then
+  PID="$(cat "$PIDFILE")"
+  if kill "$PID" 2>/dev/null; then
+    echo "Stopped the previously running app so the update can take effect."
+    sleep 1
+  fi
+  rm -f "$PIDFILE"
+fi
+
 echo ""
-echo "Update complete. Close/relaunch the app to use the newest version."
+echo "Update complete. Launch Fantasy Decision Lab to start the newest version."
 read -r -p "Press Return to close..."
