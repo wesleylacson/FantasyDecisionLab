@@ -7,4 +7,4 @@ if [ -x ".venv/bin/python" ]; then
   PYTHON_BIN=".venv/bin/python"
 fi
 
-exec "$PYTHON_BIN" projection_workbench.py
+exec "$PYTHON_BIN" projection_workbench_step1.py
