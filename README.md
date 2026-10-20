@@ -1,15 +1,30 @@
 # Fantasy Decision Lab
 
-Local fantasy-football Start/Sit decision tool for QB, RB, WR and TE.
+Local fantasy-football decision tool for Start/Sit analysis and weekly projection building.
 
 ## First run on Mac
 
 1. Keep this folder somewhere permanent (for example `~/Applications/FantasyDecisionLab` or `~/Documents/FantasyDecisionLab`).
 2. Double-click **First-time Setup.command**.
 3. Paste your FantasyPros API key when prompted. The key is stored locally in `~/.fantasy_decision_lab/config.json` with user-only file permissions.
-4. Double-click **Launch Fantasy Decision Lab.command** whenever you want to use the app.
+4. Double-click **Launch Fantasy Decision Lab.command** whenever you want to use the Start/Sit app.
 
 Your existing FantasyPros accuracy CSVs should remain somewhere under `~/Downloads` with their existing names.
+
+## Projection Workbench pilot
+
+Double-click **Launch Projection Workbench.command** to open the standalone projection MVP at `http://127.0.0.1:8766`.
+
+The pilot supports:
+- player/week/scoring-specific projection records
+- editable projected stat lines and automatic fantasy-point calculation
+- the four projection pillars with separate system evidence and user-context notes
+- category-based evidence coverage rather than reliance on one source
+- append-only projection revisions and one locked official pregame projection
+- actual-result grading with our absolute error versus app absolute error
+- a cumulative MAE-vs-app line chart filterable by position
+
+Projection records are stored locally in `~/.fantasy_decision_lab/projections.json`. The pilot is intentionally standalone so it can be tested without destabilizing the existing Start/Sit app; once the workflow is validated it can be mounted into the main app navigation.
 
 ## Updating
 
@@ -17,7 +32,9 @@ After this folder is cloned from the GitHub repository, double-click **Update Fa
 
 ## Data
 
-The app keeps FantasyPros comparison caches under `~/Downloads/fantasy_decision_lab_cache/`. The in-app refresh buttons can invalidate matchup, position or all cached ballots.
+The Start/Sit app keeps FantasyPros comparison caches under `~/Downloads/fantasy_decision_lab_cache/`. The in-app refresh buttons can invalidate matchup, position or all cached ballots.
+
+The Projection Workbench keeps its revision history and grading data under `~/.fantasy_decision_lab/projections.json`.
 
 ## Security
 
