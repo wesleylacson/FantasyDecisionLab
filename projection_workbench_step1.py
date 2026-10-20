@@ -70,7 +70,7 @@ async function resolveSelectedPlayer(){
     status.textContent=`${local.position} · ${local.team}; schedule lookup unavailable`;
   }
 }
-function setStat(id,value){if($(id) && value!==undefined && value!==null)$(''+id).value=value}
+function setStat(id,value){if($(id) && value!==undefined && value!==null)$(id).value=value}
 function applyResearchResult(rec){
   if(rec.team)$('team').value=rec.team;
   if(rec.opponent)$('opponent').value=rec.opponent;
@@ -92,6 +92,10 @@ function applyResearchResult(rec){
   if(rec.floor_fp!=null)$('floorFp').value=rec.floor_fp;
   if(rec.ceiling_fp!=null)$('ceilingFp').value=rec.ceiling_fp;
   calc();
+  if(rec.research_error){
+    $('researchStatus').textContent=`Research pass failed: ${rec.research_error}. No automatic stat line should be trusted for this revision.`;
+    return;
+  }
   const states=Object.values(rec.evidence||{});
   const available=states.filter(v=>v==='available').length;
   const partial=states.filter(v=>v==='partial').length;
