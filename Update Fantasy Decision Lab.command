@@ -22,6 +22,10 @@ fi
 echo "Checking GitHub for updates..."
 git pull --ff-only
 
+# GitHub's contents API can add new .command files without an executable bit.
+# Repair launcher permissions after every update so new pilots are double-clickable.
+chmod +x "$DIR"/*.command 2>/dev/null || true
+
 if [ -x "$DIR/.venv/bin/pip" ]; then
   "$DIR/.venv/bin/pip" install -r requirements.txt >/dev/null
 fi
@@ -39,5 +43,5 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 echo ""
-echo "Update complete. Launch Fantasy Decision Lab to start the newest version."
+echo "Update complete. Launch Fantasy Decision Lab or Projection Workbench to start the newest version."
 read -r -p "Press Return to close..."
