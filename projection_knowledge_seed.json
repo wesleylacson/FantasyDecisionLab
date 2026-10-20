@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "learnings": [
+    {
+      "scope": "global",
+      "subject": "projection methodology",
+      "statement": "Regress short recent samples toward a longer season baseline unless there is concrete evidence of a durable role change.",
+      "confidence": "high",
+      "source": "Projection postmortems",
+      "active": true
+    },
+    {
+      "scope": "global",
+      "subject": "touchdowns",
+      "statement": "Do not treat a long touchdown or short touchdown streak as repeatable volume; separate opportunity from realized scoring.",
+      "confidence": "high",
+      "source": "Projection postmortems",
+      "active": true
+    },
+    {
+      "scope": "global",
+      "subject": "wide receivers",
+      "statement": "For pass catchers, consider role/alignment versus man-zone and coverage shells, likely primary coverage, pressure/QB interaction, and comparability of prior opponent/play-calling environments.",
+      "confidence": "high",
+      "source": "User projection framework",
+      "active": true
+    },
+    {
+      "scope": "global",
+      "subject": "running backs",
+      "statement": "For running backs, distinguish raw recent production from sustainable workload, goal-line role, passing-down role, teammate competition, offensive-line context, box tendencies, and game-script sensitivity.",
+      "confidence": "high",
+      "source": "User projection framework",
+      "active": true
+    },
+    {
+      "scope": "global",
+      "subject": "market baseline",
+      "statement": "Treat the app projection as an important benchmark and calibration anchor, not as the answer. Material disagreement should be traceable to explicit component assumptions.",
+      "confidence": "high",
+      "source": "User projection framework",
+      "active": true
+    },
+    {
+      "scope": "global",
+      "subject": "weather",
+      "statement": "Weather is a cross-cutting modifier to underlying stat assumptions, not a blunt post-hoc fantasy-point adjustment.",
+      "confidence": "high",
+      "source": "Projection design",
+      "active": true
+    }
+  ]
+}
