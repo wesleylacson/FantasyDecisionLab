@@ -3,6 +3,10 @@ set +e
 cd "$(dirname "$0")"
 
 URL="http://127.0.0.1:8766"
+KEY_FILE="$HOME/.fantasy_decision_lab/openai_api_key"
+if [ -z "$OPENAI_API_KEY" ] && [ -f "$KEY_FILE" ]; then
+  export OPENAI_API_KEY="$(tr -d '\r\n' < "$KEY_FILE")"
+fi
 
 # If the workbench is already listening, don't start a second server.
 # Just surface the existing app in the browser.
@@ -18,7 +22,7 @@ if [ -x ".venv/bin/python" ]; then
 fi
 
 echo "Starting Projection Workbench..."
-"$PYTHON_BIN" projection_workbench_step1.py
+"$PYTHON_BIN" projection_workbench_ai.py
 STATUS=$?
 
 if [ $STATUS -ne 0 ]; then
