@@ -8,8 +8,6 @@ if [ -z "$OPENAI_API_KEY" ] && [ -f "$KEY_FILE" ]; then
   export OPENAI_API_KEY="$(tr -d '\r\n' < "$KEY_FILE")"
 fi
 
-# If the workbench is already listening, don't start a second server.
-# Just surface the existing app in the browser.
 if command -v lsof >/dev/null 2>&1 && lsof -iTCP:8766 -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Projection Workbench is already running. Opening it in your browser..."
   open "$URL"
@@ -22,7 +20,7 @@ if [ -x ".venv/bin/python" ]; then
 fi
 
 echo "Starting Projection Workbench..."
-"$PYTHON_BIN" projection_workbench_ai.py
+"$PYTHON_BIN" projection_workbench_app.py
 STATUS=$?
 
 if [ $STATUS -ne 0 ]; then
