@@ -106,9 +106,6 @@ def _calculate_points(position: str, stats: dict, profile_name: str) -> float:
     points = _original_calculate_points(position, stats, profile_name)
     if str(profile_name).lower() == "fami" and str(position).upper() != "QB":
         points += base.num(stats.get("carries")) * 0.2
-    elif str(profile_name).lower() == "fami" and str(position).upper() == "QB":
-        # The base function used its now-patched profile, so no extra QB adjustment is needed.
-        pass
     return round(points, 2)
 
 
@@ -164,6 +161,12 @@ html = html.replace(
 html = html.replace(
     "setStat('pass_yards',s.pass_yards);setStat('pass_tds',s.pass_tds);setStat('interceptions',s.interceptions);\n    setStat('qb_rush_yards',s.rush_yards);setStat('qb_rush_tds',s.rush_tds);",
     "setStat('pass_attempts',s.pass_attempts);setStat('pass_yards',s.pass_yards);setStat('pass_tds',s.pass_tds);setStat('interceptions',s.interceptions);\n    setStat('qb_rush_attempts',s.qb_rush_attempts);setStat('qb_rush_yards',s.rush_yards);setStat('qb_rush_tds',s.rush_tds);",
+    1,
+)
+# Historical source rows can legitimately have no model projection; never render null as 0.00.
+html = html.replace(
+    "<span>${Number(r.our_projected_fp).toFixed(2)}</span><span>${r.app_projected_fp==null?'—':Number(r.app_projected_fp).toFixed(2)}</span>",
+    "<span>${r.our_projected_fp==null?'—':Number(r.our_projected_fp).toFixed(2)}</span><span>${r.app_projected_fp==null?'—':Number(r.app_projected_fp).toFixed(2)}</span>",
     1,
 )
 html = html.replace(
