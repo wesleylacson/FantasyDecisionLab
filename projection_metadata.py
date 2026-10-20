@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -89,10 +88,8 @@ def projection_week() -> int:
         state = _fetch_json(SLEEPER_STATE_URL, timeout=10)
         current = int(state.get("week") or 0)
         if 1 <= current <= 18:
-            # Sleeper generally advances the state to the new week after Monday.
-            # On Monday, project the next week; Tuesday-Sunday, use the state week.
-            if datetime.now().weekday() == 0 and current < 18:
-                return current + 1
+            # Sleeper already rolls its state to the upcoming/current fantasy week.
+            # Use it directly rather than adding another week on Mondays.
             return current
     except Exception:
         pass
