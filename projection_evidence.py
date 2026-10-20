@@ -5,7 +5,7 @@ from urllib.request import Request, urlopen
 
 from projection_metadata import YEAR, ESPN_WEEK_URL, lookup_player, _norm_team
 
-UA = "FantasyDecisionLab/0.2 (+local fantasy projection tool)"
+UA = "FantasyDecisionLab/0.3 (+local fantasy projection tool)"
 STATS_URL = "https://api.sleeper.com/stats/nfl/player/{player_id}?season={year}&season_type=regular&grouping=week"
 PROJECTIONS_URL = "https://api.sleeper.com/projections/nfl/player/{player_id}?season={year}&season_type=regular&grouping=week"
 
@@ -60,7 +60,7 @@ def _avg(rows, key):
             vals.append(value)
         except Exception:
             pass
-    return round(sum(vals) / len(vals), 2) if vals else None
+    return round(sum(vals) / len(vals), 3) if vals else None
 
 
 def recent_usage(player_id: str, projection_week: int) -> dict:
@@ -77,10 +77,17 @@ def recent_usage(player_id: str, projection_week: int) -> dict:
             "receptions": _avg(rows, "rec"),
             "rush_yards": _avg(rows, "rush_yd"),
             "rec_yards": _avg(rows, "rec_yd"),
+            "rush_tds": _avg(rows, "rush_td"),
+            "rec_tds": _avg(rows, "rec_td"),
+            "rush_first_downs": _avg(rows, "rush_fd"),
+            "rec_first_downs": _avg(rows, "rec_fd"),
+            "pass_yards": _avg(rows, "pass_yd"),
+            "pass_tds": _avg(rows, "pass_td"),
+            "interceptions": _avg(rows, "pass_int"),
             "snap_pct": _avg(rows, "snap_pct"),
         }
         parts = []
-        for label, key in (("carries", "carries"), ("targets", "targets"), ("receptions", "receptions"), ("rush yds", "rush_yards"), ("rec yds", "rec_yards")):
+        for label, key in (("carries", "carries"), ("targets", "targets"), ("receptions", "receptions"), ("rush yds", "rush_yards"), ("rec yds", "rec_yards"), ("pass yds", "pass_yards")):
             if metrics[key] is not None:
                 parts.append(f"{metrics[key]} {label}")
         summary = f"Last {len(rows)} games average: " + (", ".join(parts) if parts else "weekly usage available") + "."
@@ -106,8 +113,8 @@ def market_projection(player_id: str, week: int, app_projection=None) -> dict:
         for key in ("pts_ppr", "pts_half_ppr", "pts_std"):
             if stats.get(key) is not None:
                 fp = round(float(stats[key]), 2)
-                return {"status": "available", "summary": f"Sleeper {key.replace('_', ' ')} projection: {fp:.2f} FP.", "fp": fp, "source": "Sleeper projections"}
-        return {"status": "partial", "summary": "Projection row is available, but no standard fantasy-point rollup was returned.", "source": "Sleeper projections"}
+                return {"status": "available", "summary": f"Sleeper {key.replace('_', ' ')} projection: {fp:.2f} FP.", "fp": fp, "stats": stats, "source": "Sleeper projections"}
+        return {"status": "partial", "summary": "Projection row is available, but no standard fantasy-point rollup was returned.", "stats": stats, "source": "Sleeper projections"}
     except Exception as e:
         return {"status": "missing", "summary": "Market projection feed unavailable.", "source": "Sleeper projections", "error": str(e)}
 
@@ -130,6 +137,8 @@ def game_environment(team: str, opponent: str, week: int) -> dict:
                 continue
             bits = []
             odds = comp.get("odds") or event.get("odds") or []
+            details = None
+            over_under = None
             if odds:
                 o = odds[0] if isinstance(odds, list) else odds
                 details = o.get("details") if isinstance(o, dict) else None
@@ -147,9 +156,11 @@ def game_environment(team: str, opponent: str, week: int) -> dict:
                 display = weather.get("displayValue") or weather.get("conditionId") or weather.get("temperature")
                 if display:
                     weather_summary = str(display)
-            result = {
+            return {
                 "status": status,
                 "summary": "; ".join(bits) + ".",
+                "details": details,
+                "over_under": over_under,
                 "source": "ESPN scoreboard",
                 "weather": {
                     "status": "neutral" if weather_summary else "unknown",
@@ -157,7 +168,6 @@ def game_environment(team: str, opponent: str, week: int) -> dict:
                     "affected_components": [],
                 },
             }
-            return result
     except Exception as e:
         result["error"] = str(e)
     return result
