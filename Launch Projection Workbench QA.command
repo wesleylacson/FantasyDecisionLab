@@ -19,7 +19,7 @@ fi
 
 echo "Starting Projection Workbench QA..."
 echo "QA mode uses fixtures only and will not make paid OpenAI API or web-search calls."
-"$PYTHON_BIN" projection_workbench_ai.py
+"$PYTHON_BIN" projection_workbench_app.py
 STATUS=$?
 
 if [ $STATUS -ne 0 ]; then
