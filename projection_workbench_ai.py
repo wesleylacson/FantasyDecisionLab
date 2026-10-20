@@ -8,7 +8,7 @@ import projection_workbench_step1 as prior
 from projection_ai import is_configured, research_projection
 
 base = prior.base
-base.APP_VERSION = "0.4.0-ai-research"
+base.APP_VERSION = "0.4.1-ai-research-ux"
 
 
 def enhance_html(html: str) -> str:
@@ -20,6 +20,81 @@ def enhance_html(html: str) -> str:
         '<input id="appFp" type="number" step="0.01" placeholder="16.10">',
         '<input id="appFp" type="number" step="0.01" min="0" placeholder="Required benchmark">',
     )
+
+    # Draft mode should ask only for the inputs that matter. Metadata and all projection
+    # output stay available after the run, but do not consume vertical space beforehand.
+    html = html.replace(
+        '<div class="field"><label>Team <span class="muted">· autofill</span></label>',
+        '<div class="field post-only"><label>Team <span class="muted">· autofill</span></label>',
+    )
+    html = html.replace(
+        '<div class="field"><label>Opponent <span class="muted">· autofill</span></label>',
+        '<div class="field post-only"><label>Opponent <span class="muted">· autofill</span></label>',
+    )
+    html = html.replace(
+        '<div class="field"><label>Week <span class="muted">· autofill</span></label>',
+        '<div class="field post-only"><label>Week <span class="muted">· autofill</span></label>',
+    )
+    html = html.replace(
+        '<div class="field"><label>Position <span class="muted">· autofill</span></label>',
+        '<div class="field post-only"><label>Position <span class="muted">· autofill</span></label>',
+    )
+
+    html = html.replace('<div class="panel hero">', '<div class="panel hero post-only">', 1)
+    html = html.replace(
+        '<div class="panel"><div class="section-label">Projected stat line</div>',
+        '<div class="panel post-only"><div class="section-label">Projected stat line</div>',
+        1,
+    )
+    html = html.replace(
+        '<div class="panel"><div class="section-label">Weather adjustment</div>',
+        '<div class="panel post-only"><div class="section-label">Weather adjustment</div>',
+        1,
+    )
+    html = html.replace(
+        '<div id="pillarOutputPanel" class="panel hidden">',
+        '<div id="pillarOutputPanel" class="panel hidden post-only">',
+        1,
+    )
+    html = html.replace(
+        '<div class="panel"><div class="section-label">Evidence coverage</div>',
+        '<div class="panel post-only"><div class="section-label">Evidence coverage</div>',
+        1,
+    )
+    html = html.replace(
+        '<div class="panel"><div class="section-label">Something look off?</div>',
+        '<div class="panel post-only"><div class="section-label">Something look off?</div>',
+        1,
+    )
+    html = html.replace('<div class="actions"><button id="saveBtn"', '<div class="actions post-only"><button id="saveBtn"', 1)
+
+    # Put Generate directly after the context boxes in draft mode, with a visible research
+    # state so a long web-research call feels deliberate rather than frozen.
+    html = html.replace(
+        '</div></div>\n\n<div id="pillarOutputPanel"',
+        '''</div></div>
+<div id="draftActions" class="actions draft-only" style="margin-top:12px">
+  <button id="draftGenerateBtn" class="btn primary">Generate projection</button>
+  <span id="draftLoading" class="status"></span>
+</div>
+
+<div id="pillarOutputPanel"''',
+        1,
+    )
+
+    html = html.replace(
+        '</style>',
+        '''
+body.draft-mode .post-only{display:none !important}
+body.result-mode .draft-only{display:none !important}
+#draftGenerateBtn[disabled]{opacity:.65;cursor:wait}
+#draftLoading{display:inline-flex;align-items:center;gap:8px}
+#draftLoading.loading::before{content:"";width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;animation:fdlspin .8s linear infinite}
+@keyframes fdlspin{to{transform:rotate(360deg)}}
+</style>''',
+        1,
+    )
+
     html = html.replace(
         "async function saveRevision(){if(!$('player').value.trim()){ $('status').textContent='Player is required.';return }",
         "async function saveRevision(){if(!$('player').value.trim()){ $('status').textContent='Player is required.';return }if(!$('appFp').value.trim()){ $('status').textContent='App projection is required.';$('appFp').focus();return }",
@@ -31,6 +106,36 @@ def enhance_html(html: str) -> str:
     html = html.replace(
         "$('researchStatus').textContent=`Automatic evidence pass: ${available} available · ${partial} partial · ${states.length-available-partial} missing. Stat line generated from recent usage, game environment, and bounded market calibration.`;",
         "const ai=rec.ai_meta||{};const mode=rec.ai_mode==='web_research'?'AI + live web research':'local fallback';const usage=ai.usage||{};const tokenText=usage.total_tokens?` · ${usage.total_tokens} tokens`:'';const searchText=ai.web_search_calls!=null?` · ${ai.web_search_calls} web search calls`:'';$('researchStatus').textContent=`${mode}: ${available} available · ${partial} partial · ${states.length-available-partial} missing${searchText}${tokenText}.`;",
+    )
+
+    # Hook draft button into the existing save path and mirror its lifecycle. MutationObserver
+    # watches the existing status node so we do not fork the projection logic.
+    html = html.replace(
+        'buildEvidence();loadPlayerDirectory();document.querySelectorAll',
+        '''document.body.classList.add('draft-mode');
+const draftBtn=$('draftGenerateBtn');
+const draftLoading=$('draftLoading');
+function setDraftLoading(on,msg=''){
+  if(!draftBtn)return;
+  draftBtn.disabled=on;
+  draftBtn.textContent=on?'Researching…':'Generate projection';
+  if(draftLoading){draftLoading.textContent=msg;draftLoading.classList.toggle('loading',on)}
+}
+if(draftBtn){draftBtn.addEventListener('click',async()=>{
+  if(!$('player').value.trim()){draftLoading.textContent='Player is required.';return}
+  if(!$('appFp').value.trim()){draftLoading.textContent='App projection is required.';$('appFp').focus();return}
+  setDraftLoading(true,'Searching current evidence and building the projection…');
+  await saveRevision();
+  if(currentRecord){
+    document.body.classList.remove('draft-mode');document.body.classList.add('result-mode');
+    setDraftLoading(false,'');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }else{
+    setDraftLoading(false,$('status').textContent||'Projection failed.');
+  }
+})}
+buildEvidence();loadPlayerDirectory();document.querySelectorAll''',
+        1,
     )
     return html
 
