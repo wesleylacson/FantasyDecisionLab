@@ -22,24 +22,42 @@ fi
 echo "Checking GitHub for updates..."
 git pull --ff-only
 
-# GitHub's contents API can add new .command files without an executable bit.
-# Repair launcher permissions after every update so new pilots are double-clickable.
+# Keep all double-click launchers executable. The repo now tracks the projection
+# launcher with the executable bit so this should not create a local Git change.
 chmod +x "$DIR"/*.command 2>/dev/null || true
 
 if [ -x "$DIR/.venv/bin/pip" ]; then
   "$DIR/.venv/bin/pip" install -r requirements.txt >/dev/null
 fi
 
-# If an older app process is still running, stop it now so the next Launch
-# actually starts the newly-updated entrypoint instead of reopening the old server.
+# Stop the main app if it was launched through its pidfile.
 PIDFILE="$DIR/fantasy_decision_lab.pid"
 if [ -f "$PIDFILE" ]; then
   PID="$(cat "$PIDFILE")"
   if kill "$PID" 2>/dev/null; then
-    echo "Stopped the previously running app so the update can take effect."
+    echo "Stopped the previously running main app so the update can take effect."
     sleep 1
   fi
   rm -f "$PIDFILE"
+fi
+
+# The Projection Workbench historically did not write a pidfile. If an older
+# workbench is still listening on 8766, the launcher would otherwise reopen the
+# stale process and make a successful update look unchanged. Only kill the
+# listener when its command line identifies it as our projection workbench.
+if command -v lsof >/dev/null 2>&1; then
+  WORKBENCH_PID="$(lsof -iTCP:8766 -sTCP:LISTEN -t 2>/dev/null | head -n 1)"
+  if [ -n "$WORKBENCH_PID" ]; then
+    WORKBENCH_CMD="$(ps -p "$WORKBENCH_PID" -o command= 2>/dev/null || true)"
+    case "$WORKBENCH_CMD" in
+      *projection_workbench*)
+        if kill "$WORKBENCH_PID" 2>/dev/null; then
+          echo "Stopped the previously running Projection Workbench so the update can take effect."
+          sleep 1
+        fi
+        ;;
+    esac
+  fi
 fi
 
 echo ""
