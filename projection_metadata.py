@@ -78,6 +78,9 @@ def player_directory(force: bool = False) -> list[dict]:
             "player": name,
             "team": team,
             "position": position,
+            "injury_status": str(item.get("injury_status") or ""),
+            "injury_body_part": str(item.get("injury_body_part") or ""),
+            "injury_notes": str(item.get("injury_notes") or ""),
         })
     players.sort(key=lambda p: p["player"].lower())
     return players
@@ -88,12 +91,9 @@ def projection_week() -> int:
         state = _fetch_json(SLEEPER_STATE_URL, timeout=10)
         current = int(state.get("week") or 0)
         if 1 <= current <= 18:
-            # Sleeper already rolls its state to the upcoming/current fantasy week.
-            # Use it directly rather than adding another week on Mondays.
             return current
     except Exception:
         pass
-    # 2026 pilot fallback. Week remains editable in the UI.
     return 7
 
 
