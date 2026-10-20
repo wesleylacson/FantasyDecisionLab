@@ -38,8 +38,6 @@ def _start_projection_workbench() -> None:
     key_file = Path.home() / ".fantasy_decision_lab" / "openai_api_key"
     if not env.get("OPENAI_API_KEY") and key_file.exists():
         env["OPENAI_API_KEY"] = key_file.read_text(encoding="utf-8").strip()
-    # The main navigation already owns the browser transition, so suppress the
-    # workbench's standalone auto-open behavior when it is launched from here.
     env["FANTASY_PROJECTION_NO_BROWSER"] = "1"
     python_bin = ROOT / ".venv" / "bin" / "python"
     if not python_bin.exists():
@@ -47,7 +45,7 @@ def _start_projection_workbench() -> None:
     log_path = ROOT / "projection_workbench.log"
     with log_path.open("a", encoding="utf-8") as log:
         subprocess.Popen(
-            [str(python_bin), str(ROOT / "projection_workbench_app.py")],
+            [str(python_bin), str(ROOT / "projection_workbench_nav.py")],
             cwd=str(ROOT),
             env=env,
             stdout=log,
