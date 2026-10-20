@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -16,7 +17,6 @@ SLEEPER_PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
 SLEEPER_STATE_URL = "https://api.sleeper.app/v1/state/nfl"
 ESPN_WEEK_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates={year}&seasontype=2&week={week}"
 
-# Normalize provider-specific abbreviations to the values Sleeper typically uses.
 TEAM_ALIASES = {
     "WSH": "WAS",
     "JAC": "JAX",
@@ -50,17 +50,14 @@ def _write_cache(path: Path, data) -> None:
 
 def player_directory(force: bool = False) -> list[dict]:
     raw = None
-    source = "live"
     if not force and _cache_fresh(PLAYER_CACHE):
         raw = _read_cache(PLAYER_CACHE)
-        source = "cache"
     if raw is None:
         try:
             raw = _fetch_json(SLEEPER_PLAYERS_URL, timeout=30)
             _write_cache(PLAYER_CACHE, raw)
         except Exception:
             raw = _read_cache(PLAYER_CACHE)
-            source = "stale-cache"
             if raw is None:
                 raise
 
@@ -88,15 +85,15 @@ def player_directory(force: bool = False) -> list[dict]:
 
 
 def projection_week() -> int:
-    # On game-week Mondays the state endpoint still reports the week being completed,
-    # while this workbench is intended to build the upcoming week's projections.
     try:
         state = _fetch_json(SLEEPER_STATE_URL, timeout=10)
         current = int(state.get("week") or 0)
-        if 1 <= current <= 17:
-            return current + 1
-        if current == 18:
-            return 18
+        if 1 <= current <= 18:
+            # Sleeper generally advances the state to the new week after Monday.
+            # On Monday, project the next week; Tuesday-Sunday, use the state week.
+            if datetime.now().weekday() == 0 and current < 18:
+                return current + 1
+            return current
     except Exception:
         pass
     # 2026 pilot fallback. Week remains editable in the UI.
