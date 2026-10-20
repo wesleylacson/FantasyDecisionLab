@@ -20,7 +20,7 @@ if [ -x ".venv/bin/python" ]; then
 fi
 
 echo "Starting Projection Workbench..."
-"$PYTHON_BIN" projection_workbench_app.py
+"$PYTHON_BIN" projection_workbench_nav.py
 STATUS=$?
 
 if [ $STATUS -ne 0 ]; then
