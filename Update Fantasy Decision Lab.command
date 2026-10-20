@@ -22,8 +22,8 @@ fi
 echo "Checking GitHub for updates..."
 git pull --ff-only
 
-# Keep all double-click launchers executable. The repo now tracks the projection
-# launcher with the executable bit so this should not create a local Git change.
+# Keep all double-click launchers executable. Repo-tracked launchers use executable mode,
+# so this should not create local Git changes.
 chmod +x "$DIR"/*.command 2>/dev/null || true
 
 if [ -x "$DIR/.venv/bin/pip" ]; then
@@ -41,25 +41,25 @@ if [ -f "$PIDFILE" ]; then
   rm -f "$PIDFILE"
 fi
 
-# The Projection Workbench historically did not write a pidfile. If an older
-# workbench is still listening on 8766, the launcher would otherwise reopen the
-# stale process and make a successful update look unchanged. Only kill the
-# listener when its command line identifies it as our projection workbench.
+# Projection Workbench live uses 8766; QA fixtures use 8767. Stop either stale server
+# during updates so the next launcher always reflects the newest code.
 if command -v lsof >/dev/null 2>&1; then
-  WORKBENCH_PID="$(lsof -iTCP:8766 -sTCP:LISTEN -t 2>/dev/null | head -n 1)"
-  if [ -n "$WORKBENCH_PID" ]; then
-    WORKBENCH_CMD="$(ps -p "$WORKBENCH_PID" -o command= 2>/dev/null || true)"
-    case "$WORKBENCH_CMD" in
-      *projection_workbench*)
-        if kill "$WORKBENCH_PID" 2>/dev/null; then
-          echo "Stopped the previously running Projection Workbench so the update can take effect."
-          sleep 1
-        fi
-        ;;
-    esac
-  fi
+  for PORT in 8766 8767; do
+    WORKBENCH_PID="$(lsof -iTCP:$PORT -sTCP:LISTEN -t 2>/dev/null | head -n 1)"
+    if [ -n "$WORKBENCH_PID" ]; then
+      WORKBENCH_CMD="$(ps -p "$WORKBENCH_PID" -o command= 2>/dev/null || true)"
+      case "$WORKBENCH_CMD" in
+        *projection_workbench*)
+          if kill "$WORKBENCH_PID" 2>/dev/null; then
+            echo "Stopped the previously running Projection Workbench on port $PORT so the update can take effect."
+            sleep 1
+          fi
+          ;;
+      esac
+    fi
+  done
 fi
 
 echo ""
-echo "Update complete. Launch Fantasy Decision Lab or Projection Workbench to start the newest version."
+echo "Update complete. Launch Fantasy Decision Lab, Projection Workbench, or Projection Workbench QA to start the newest version."
 read -r -p "Press Return to close..."
