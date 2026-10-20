@@ -28,6 +28,10 @@ def enhance_html(html: str) -> str:
         'Generate a revision to run the evidence pass and build a stat line.',
         'Generate runs the full AI + web research projection when your API key is configured; otherwise the local fallback engine is used.',
     )
+    html = html.replace(
+        "$('researchStatus').textContent=`Automatic evidence pass: ${available} available · ${partial} partial · ${states.length-available-partial} missing. Stat line generated from recent usage, game environment, and bounded market calibration.`;",
+        "const ai=rec.ai_meta||{};const mode=rec.ai_mode==='web_research'?'AI + live web research':'local fallback';const usage=ai.usage||{};const tokenText=usage.total_tokens?` · ${usage.total_tokens} tokens`:'';const searchText=ai.web_search_calls!=null?` · ${ai.web_search_calls} web search calls`:'';$('researchStatus').textContent=`${mode}: ${available} available · ${partial} partial · ${states.length-available-partial} missing${searchText}${tokenText}.`;",
+    )
     return html
 
 
@@ -118,18 +122,30 @@ def enrich_projection_payload(payload: dict) -> dict:
     return enriched
 
 
+def _save_projection(payload: dict) -> dict:
+    result = base.save_projection(payload)
+    extras = {
+        "ai_mode": payload.get("ai_mode"),
+        "ai_meta": payload.get("ai_meta") or {},
+        "projection_summary": payload.get("projection_summary") or "",
+    }
+    store = base.load_store()
+    for record in reversed(store.get("records") or []):
+        if record.get("id") == result.get("id"):
+            record.update(extras)
+            result = dict(record)
+            break
+    base.save_store(store)
+    return result
+
+
 class Handler(prior.Handler):
     def do_POST(self):
         if self.path == "/api/projection":
             try:
                 payload = enrich_projection_payload(self.read_json())
                 with base.LOCK:
-                    result = base.save_projection(payload)
-                result["ai_mode"] = payload.get("ai_mode")
-                if payload.get("ai_meta"):
-                    result["ai_meta"] = payload["ai_meta"]
-                if payload.get("projection_summary"):
-                    result["projection_summary"] = payload["projection_summary"]
+                    result = _save_projection(payload)
                 self.send_json(result)
             except Exception as e:
                 self.send_json({"error": str(e)}, status=400)
