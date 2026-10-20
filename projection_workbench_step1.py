@@ -90,7 +90,10 @@ $('player').addEventListener('change',resolveSelectedPlayer);
 $('player').addEventListener('blur',resolveSelectedPlayer);
 '''
     html = html.replace('buildEvidence();document.querySelectorAll', injected + '\nbuildEvidence();loadPlayerDirectory();document.querySelectorAll')
-    html = html.replace('currentRecord=rec;$(\'revisionBadge\')', 'currentRecord=rec;applyResearchResult(rec);$(\'revisionBadge\')')
+    html = html.replace(
+        "currentRecord=rec;$('revisionBadge')",
+        "currentRecord=rec;applyResearchResult(rec);$('revisionBadge')",
+    )
     return html
 
 
@@ -127,8 +130,6 @@ def enrich_projection_payload(payload: dict) -> dict:
 
     weather = research.get("weather") or {}
     existing_weather = enriched.get("weather") if isinstance(enriched.get("weather"), dict) else {}
-    # Weather is evidence only at this stage. The later stat-construction step will
-    # translate meaningful conditions into stat-level changes rather than a blunt FP dock.
     enriched["weather"] = {
         "status": weather.get("status") or existing_weather.get("status") or "unknown",
         "summary": weather.get("summary") or existing_weather.get("summary") or "",
