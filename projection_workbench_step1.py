@@ -7,9 +7,10 @@ from urllib.parse import parse_qs, urlparse
 
 import projection_workbench as base
 from projection_evidence import collect_evidence
+from projection_engine import build_projection
 from projection_metadata import lookup_player, player_directory, projection_week
 
-base.APP_VERSION = "0.2.0-projection-evidence"
+base.APP_VERSION = "0.3.0-projection-engine"
 
 
 def enhance_html(html: str) -> str:
@@ -23,7 +24,7 @@ def enhance_html(html: str) -> str:
     html = html.replace('Position <span class="muted">· autofill later</span>', 'Position <span class="muted">· autofill</span>')
     html = html.replace(
         '<div class="panel"><div class="section-label">Evidence coverage</div>',
-        '<div class="panel"><div class="section-label">Evidence coverage</div><div id="researchStatus" class="muted" style="font-size:12px;margin-bottom:10px">Generate a revision to run the first evidence pass.</div>',
+        '<div class="panel"><div class="section-label">Evidence coverage</div><div id="researchStatus" class="muted" style="font-size:12px;margin-bottom:10px">Generate a revision to run the evidence pass and build a stat line.</div>',
     )
 
     injected = r'''
@@ -69,22 +70,32 @@ async function resolveSelectedPlayer(){
     status.textContent=`${local.position} · ${local.team}; schedule lookup unavailable`;
   }
 }
+function setStat(id,value){if($(id) && value!==undefined && value!==null)$(''+id).value=value}
 function applyResearchResult(rec){
   if(rec.team)$('team').value=rec.team;
   if(rec.opponent)$('opponent').value=rec.opponent;
   if(rec.week)$('week').value=rec.week;
   if(rec.position){$('position').value=rec.position;updatePosition()}
   Object.keys(evidenceLabels).forEach(k=>{if(rec.evidence?.[k] && $('ev_'+k))$('ev_'+k).value=rec.evidence[k]});
-  updateCoverage();
   if(rec.weather){
     $('weatherStatus').value=rec.weather.status||'unknown';
     $('weatherSummary').value=rec.weather.summary||'';
     $('weatherAdjustment').value=rec.weather.fp_adjustment||'';
   }
+  const s=rec.stats||{};
+  if(rec.position==='QB'){
+    setStat('pass_yards',s.pass_yards);setStat('pass_tds',s.pass_tds);setStat('interceptions',s.interceptions);
+    setStat('qb_rush_yards',s.rush_yards);setStat('qb_rush_tds',s.rush_tds);
+  }else{
+    ['carries','rush_yards','rush_tds','rush_first_downs','targets','receptions','rec_yards','rec_tds','rec_first_downs'].forEach(k=>setStat(k,s[k]));
+  }
+  if(rec.floor_fp!=null)$('floorFp').value=rec.floor_fp;
+  if(rec.ceiling_fp!=null)$('ceilingFp').value=rec.ceiling_fp;
+  calc();
   const states=Object.values(rec.evidence||{});
   const available=states.filter(v=>v==='available').length;
   const partial=states.filter(v=>v==='partial').length;
-  $('researchStatus').textContent=`Automatic evidence pass: ${available} available · ${partial} partial · ${states.length-available-partial} missing. Missing categories remain explicit until a reliable source is connected.`;
+  $('researchStatus').textContent=`Automatic evidence pass: ${available} available · ${partial} partial · ${states.length-available-partial} missing. Stat line generated from recent usage, game environment, and bounded market calibration.`;
 }
 $('player').addEventListener('change',resolveSelectedPlayer);
 $('player').addEventListener('blur',resolveSelectedPlayer);
@@ -116,8 +127,10 @@ def enrich_projection_payload(payload: dict) -> dict:
             app_projection=payload.get("app_projected_fp"),
             user_notes=_user_notes_from_payload(payload),
         )
-    except Exception:
-        return payload
+    except Exception as e:
+        enriched = dict(payload)
+        enriched["research_error"] = str(e)
+        return enriched
 
     meta = research.get("meta") or {}
     enriched = dict(payload)
@@ -136,6 +149,23 @@ def enrich_projection_payload(payload: dict) -> dict:
         "fp_adjustment": 0,
         "affected_components": weather.get("affected_components") or [],
     }
+
+    scoring_profile = str(enriched.get("scoring_profile") or "pigskin").lower()
+    scoring = base.SCORING_PROFILES.get(scoring_profile, base.SCORING_PROFILES["pigskin"])
+    generated = build_projection(research, scoring)
+    enriched["stats"] = generated["stats"]
+    enriched["floor_fp"] = generated["floor_fp"]
+    enriched["ceiling_fp"] = generated["ceiling_fp"]
+
+    pillars = enriched.get("pillars") or {}
+    role = pillars.get("role_opportunity") or {}
+    role["deep_dive"] = (role.get("deep_dive") or "") + " Projection construction: " + generated["method"]
+    pillars["role_opportunity"] = role
+    market = pillars.get("market_expert") or {}
+    d = generated.get("diagnostics") or {}
+    market["deep_dive"] = (market.get("deep_dive") or "") + f" Calibration diagnostics: baseline {d.get('baseline_fp_before_market')} FP, market factor {d.get('market_calibration')}, final {d.get('final_fp')} FP."
+    pillars["market_expert"] = market
+    enriched["pillars"] = pillars
     return enriched
 
 
@@ -146,6 +176,8 @@ class Handler(base.Handler):
                 payload = enrich_projection_payload(self.read_json())
                 with base.LOCK:
                     result = base.save_projection(payload)
+                if payload.get("research_error"):
+                    result["research_error"] = payload["research_error"]
                 self.send_json(result)
             except Exception as e:
                 self.send_json({"error": str(e)}, status=400)
@@ -182,7 +214,7 @@ def main():
     print(f"Projection Workbench {base.APP_VERSION}: http://{base.HOST}:{base.PORT}")
     print(f"Local projection store: {base.DATA_FILE}")
     print("Player metadata: Sleeper directory + independent schedule lookup")
-    print("Evidence pass: recent usage + injury + game market + projection anchor")
+    print("Projection engine: recent usage + game environment + bounded market calibration")
     print("Press Ctrl+C in Terminal to stop it.")
     server = ThreadingHTTPServer((base.HOST, base.PORT), Handler)
     threading.Timer(0.8, lambda: webbrowser.open(f"http://{base.HOST}:{base.PORT}")).start()
