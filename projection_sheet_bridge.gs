@@ -112,6 +112,26 @@ function upsertProjection_(trackerKey, record) {
   sheet.getRange(row, h['Generated At']).setValue(cell_(record, 'created_at'));
   sheet.getRange(row, h['Workbench Record ID']).setValue(cell_(record, 'id'));
 
+  // ESPN exposes useful component projections in addition to the headline fantasy-point total.
+  // These fields are optional. Blank values remain blank; never back-solve hidden components.
+  const appProjectionColumns = {
+    'ESPN Proj Carries': 'app_carries',
+    'ESPN Proj Receptions': 'app_receptions',
+    'ESPN Proj Targets': 'app_targets',
+    'ESPN Proj Pass Yds': 'app_pass_yards',
+    'ESPN Proj Rush Yds': 'app_rush_yards',
+    'ESPN Proj Rec Yds': 'app_rec_yards',
+    'ESPN Proj Pass TD': 'app_pass_tds',
+    'ESPN Proj Rush TD': 'app_rush_tds',
+    'ESPN Proj Rec TD': 'app_rec_tds'
+  };
+  const isEspn = String(cell_(record, 'app_source') || 'espn').toLowerCase() === 'espn';
+  Object.keys(appProjectionColumns).forEach(header => {
+    if (!h[header]) return;
+    const value = isEspn ? cell_(record, appProjectionColumns[header]) : '';
+    sheet.getRange(row, h[header]).setValue(value);
+  });
+
   // New rows can carry a concise model summary in Notes. Existing human/postmortem notes are
   // never overwritten; this keeps the tracker safe for later diagnosis.
   if (h['Notes'] && cell_(record, 'projection_summary')) {
