@@ -26,6 +26,17 @@ The pilot supports:
 
 Projection records are stored locally in `~/.fantasy_decision_lab/projections.json`. The pilot is intentionally standalone so it can be tested without destabilizing the existing Start/Sit app; once the workflow is validated it can be mounted into the main app navigation.
 
+## Headless postmortem learning
+
+Postgame learning is intentionally **not** an interactive Workbench button. A scheduled Tuesday process reads the synced Fantasy Projection Tracker after actuals are available, updates source-specific postmortem observations, generates diagnoses, links evidence to existing lessons, and queues genuinely new/refined lessons for human review.
+
+Key files:
+- `projection_postmortem_ai.py` — structured diagnostic/candidate-generation contract for local or future service execution
+- `POSTMORTEM_OBSERVATION_SCHEMA.md` — normalized component-observation schema and historical backfill policy
+- `POSTMORTEM_LEARNING_PIPELINE.md` — scheduled workflow, idempotency, review gate, and promotion rules
+
+The Google Sheet contains the corresponding `Postmortem Observations`, `Postmortem Diagnostics`, `Learning Registry`, `Learning Evidence Map`, `Candidate Learning Queue`, and `Postmortem Runs` tables. Candidate generation is automatic; promotion into active model knowledge remains human-gated.
+
 ## Updating
 
 After this folder is cloned from the GitHub repository, double-click **Update Fantasy Decision Lab.command**. It runs `git pull --ff-only` and refreshes Python dependencies.
