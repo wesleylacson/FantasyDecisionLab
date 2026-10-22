@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import re
+import sys
 
 import app_v0317 as prev
-import app_v039 as vegas
 
 APP_VERSION = "0.3.18"
 ns = prev.ns
 ns["APP_VERSION"] = APP_VERSION
+
+# app_v039 is already loaded as part of the inherited v0.3.17 module chain.
+# Do NOT import it again directly here: its historical standalone import path
+# expects an older module layout and is not safe from the current entrypoint.
+vegas = sys.modules.get("app_v039")
+if vegas is None:
+    raise RuntimeError("Vegas module was not loaded by the Fantasy Decision Lab module chain.")
 
 _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
@@ -57,9 +64,9 @@ def _resolve_vegas_v318(name: str, rows: list[dict]) -> dict:
     raise ValueError(f"Vegas data could not uniquely resolve {name}.")
 
 
-# Patch the Vegas module used by the inherited comparison handler. Keep the
-# rest of the matching behavior unchanged; only generational suffixes are canonicalized.
-vegas._norm = _canonical_name
+# Patch the already-loaded Vegas module used by the inherited comparison handler.
+# The cached row's original player string is re-normalized at resolution time,
+# so old Vegas snapshots benefit without a forced refresh.
 vegas._resolve_vegas = _resolve_vegas_v318
 
 OldHandler = ns["Handler"]
