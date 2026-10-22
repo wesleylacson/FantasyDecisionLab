@@ -41,8 +41,8 @@ Do not allow an outcome by itself to create a learning rule.
 | Delta | `actual - projected` |
 | Abs Error | `abs(delta)` |
 | Relative Error | `delta / abs(projected)` when meaningful |
-| Direction | hit / over / under; classification rules can be versioned later |
-| Severity | hit / small / medium / large / variance; thresholds can be versioned later |
+| Direction | `hit`, `overprojected`, or `underprojected` |
+| Severity | Reserved for later versioned thresholds; blank until thresholds are defined |
 
 ## Initial component vocabulary
 
@@ -59,6 +59,7 @@ Do not allow an outcome by itself to create a learning rule.
 - pass_yards
 - rush_yards
 - rec_yards
+- pass_yards_per_attempt
 - yards_per_carry
 - yards_per_target
 - yards_per_reception
@@ -67,9 +68,11 @@ Do not allow an outcome by itself to create a learning rule.
 - pass_tds
 - rush_tds
 - rec_tds
-- interceptions
 
 TD projections are expectations, not deterministic event forecasts. A realized TD difference should be preserved but should not automatically be treated as a model failure.
+
+### Negative play
+- interceptions
 
 ### First downs
 - first_downs
@@ -79,18 +82,36 @@ TD projections are expectations, not deterministic event forecasts. A realized T
 
 ## Derived-rate formulas
 
-For non-QBs when denominators are available:
+When the required denominator is available and non-zero:
 
 - `catch_rate = receptions / targets`
 - `yards_per_target = rec_yards / targets`
 - `yards_per_reception = rec_yards / receptions`
 - `yards_per_carry = rush_yards / rush_attempts`
+- `pass_yards_per_attempt = pass_yards / pass_attempts`
 
 These derived observations are important because they distinguish an opportunity miss from an efficiency miss. Example: if targets hit but receiving yards miss badly, the later diagnosis layer can examine catch rate and yards per target rather than treating the entire statline as one error.
 
+## Historical backfill
+
+Weeks 1–6 were backfilled from the canonical legacy in-chat projections already preserved in Projection Tracker.
+
+Backfill policy:
+
+- Legacy projection source is `Chat`.
+- `Model / Version` is `Engine unrecorded`; do not infer a historical engine or reasoning setting.
+- Preserve the originally recorded projected component exactly.
+- Preserve the originally recorded actual component exactly.
+- Never zero-impute a missing historical projected or actual value.
+- Derived rates are calculated only when the required numerator and non-zero denominator are both recorded.
+- Rows already marked `accuracy_excluded` in the legacy history are not added to the observation corpus.
+- Historical rows are descriptive evidence only; they do not automatically create learning rules.
+
+The initial backfill contains 27 usable legacy player/week projections and 302 component/derived observations. Drake Maye Week 1 and Jordan Mason Week 2 remain excluded because their legacy records were already marked accuracy-excluded.
+
 ## Week 7 bootstrap
 
-The first rows are the Week 7 Pigskin projections for Rhamondre Stevenson and Luther Burden III from:
+Week 7 Pigskin projections for Rhamondre Stevenson and Luther Burden III are stored from:
 
 - Workbench — GPT-6 Luna, low reasoning
 - Chat — GPT-6 Sol, High reasoning
