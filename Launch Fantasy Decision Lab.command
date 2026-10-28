@@ -55,7 +55,8 @@ if [ ! -x "$DIR/.venv/bin/python" ] || [ ! -f "$HOME/.fantasy_decision_lab/confi
   exit 0
 fi
 
-APP_ENTRY="$DIR/app_v0318.py"
+APP_ENTRY="$DIR/app_v0319.py"
+if [ ! -f "$APP_ENTRY" ]; then APP_ENTRY="$DIR/app_v0318.py"; fi
 if [ ! -f "$APP_ENTRY" ]; then APP_ENTRY="$DIR/app_v0317.py"; fi
 if [ ! -f "$APP_ENTRY" ]; then APP_ENTRY="$DIR/app_v0316.py"; fi
 if [ ! -f "$APP_ENTRY" ]; then APP_ENTRY="$DIR/app_v0315.py"; fi
