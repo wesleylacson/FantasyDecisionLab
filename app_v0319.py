@@ -107,15 +107,23 @@ def get_player_directory_v319(position: str, scoring: str | None = None, force: 
         scoring = "STD"
 
     key = (YEAR, core.WEEK, scoring, position)
-    if not force and key in picker.DIRECTORIES:
-        return picker.DIRECTORIES[key]
-
     path = _directory_cache_path(position, scoring)
-    cached = _load_cached_directory(path) if path.exists() else None
     age = None
     if path.exists():
         age = max(0.0, datetime.now().timestamp() - path.stat().st_mtime)
 
+    # In-memory data is only trusted while the backing week-specific snapshot
+    # is still inside the refresh TTL. This lets a long-running app discover
+    # midweek risers without requiring a restart.
+    if (
+        not force
+        and key in picker.DIRECTORIES
+        and age is not None
+        and age <= DIRECTORY_TTL_SECONDS
+    ):
+        return picker.DIRECTORIES[key]
+
+    cached = _load_cached_directory(path) if path.exists() else None
     if cached is not None and not force and age is not None and age <= DIRECTORY_TTL_SECONDS:
         picker.DIRECTORIES[key] = cached
         return cached
